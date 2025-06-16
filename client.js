@@ -5,7 +5,8 @@ const axios = require('axios');
 const clientId = 'myapp'; // مثل: http://yourrelay.com/myapp
 
 // عنوان السيرفر المركزي
-const relayUrl = `wss://portlife.easyfast.cloud/${clientId}`; 
+// const relayUrl = `wss://portlife.easyfast.cloud/${clientId}`;
+const relayUrl = `ws://localhost:8080/${clientId}`; 
 
 // عنوان السيرفر المحلي
 const localTarget = 'http://localhost';
@@ -28,9 +29,25 @@ ws.on('message', async (data) => {
       let axiosConfig = { headers:data.headers };
       if (data.responseType === 'arraybuffer') {
         axiosConfig.responseType = 'arraybuffer';
+       }
+
+      // send options request first if no options method
+      let contentType = data.headers['content-type'];
+      if(data.method !== 'OPTIONS' &&  data.responseType !== 'arraybuffer'){
+      const optionsResponse = await axios.options(fullUrl, axiosConfig);
+      axiosConfig.headers = optionsResponse.headers;
+      contentType = optionsResponse.headers['content-type'];
+      // if include image
+      if(contentType.includes('image') || 
+      contentType.includes('pdf') || 
+      contentType.includes('video') || 
+      contentType.includes('audio') || 
+      contentType.includes('file')){
+        axiosConfig.responseType = 'arraybuffer';
+        data.responseType = 'arraybuffer';
+      }
       }
       
-      console.log('body : ',data.body);
      if(data.body){
       if(Object.keys(data.body).length === 0){
           
@@ -59,27 +76,15 @@ ws.on('message', async (data) => {
       }
       
         
-  
+  let body = response.data;
       if (data.responseType === 'arraybuffer') {
-        const contentType = response.headers['content-type'] || 'application/octet-stream';
-        const base64Body = Buffer.from(response.data).toString('base64');
-  
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            data: base64Body,
-            contentType,
-            error: false,
-            requestId: data.requestId,
-            responseType: data.responseType
-          }));
-        }
-        return;
+        body = Buffer.from(response.data).toString('base64');
       }
   
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
-          data: response.data,
-          contentType: response.headers['content-type'] || 'application/json',
+          data: body,
+          contentType: response.headers['content-type'],
           error: false,
           requestId: data.requestId,
           responseType: data.responseType
@@ -91,7 +96,7 @@ ws.on('message', async (data) => {
         ws.send(JSON.stringify({
           error: err.message,
           requestId: data.requestId,
-          responseType: data?.responseType || 'json'
+          responseType: data?.responseType
         }));
       }
     }
